@@ -15,13 +15,13 @@ do
     local Files = {
         Lua = {
             Path = SCRIPT_PATH,
-            Name = "dnsCaitlyn.lua",
-            Url = "https://raw.githubusercontent.com/fkndns/dnsCaitlyn/main/dnsCaitlyn.lua"
+            Name = "dnsCaitlynAU.lua",
+            Url = "https://raw.githubusercontent.com/fkndns/dnsCaitlynAU/main/dnsCaitlynAU.lua"
         },
         Version = {
             Path = SCRIPT_PATH,
-            Name = "dnsCaitlyn.version",
-            Url = "https://raw.githubusercontent.com/fkndns/dnsCaitlyn/main/dnsCaitlyn.version"    -- check if Raw Adress correct pls.. after you have create the version file on Github
+            Name = "dnsCaitlynAU.version",
+            Url = "https://raw.githubusercontent.com/fkndns/dnsCaitlynAU/main/dnsCaitlynAU.version"    -- check if Raw Adress correct pls.. after you have create the version file on Github
         }
     }
     
