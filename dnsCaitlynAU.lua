@@ -10,7 +10,7 @@ local AllySpawnPos = nil
 
 do
     
-    local Version = 1.0
+    local Version = 1.1
     
     local Files = {
         Lua = {
@@ -394,6 +394,10 @@ local attackedfirst = 0
 local WasInRange = false
 local casted = 0
 local EnemiesAround = count
+local AARange = 625 + myHero.boundingRadius
+local DodgeableRange = 400
+local GaleTargetRange = AARange + DodgeableRange + 50
+local QMouseSpot = nil
 
 function Caitlyn:Menu()
     self.Menu = MenuElement({type = MENU, id = "Caitlyn", name = "dnsCaitlyn"})
@@ -422,10 +426,31 @@ function Caitlyn:Menu()
 	self.Menu.MakeDraw:MenuElement({id = "UseDraws", name = "U wanna hav dravvs?", value = false})
 	self.Menu.MakeDraw:MenuElement({id = "QDraws", name = "U wanna Q-Range dravvs?", value = false})
 	self.Menu.MakeDraw:MenuElement({id = "RDraws", name = "U wanna R-Range dravvs?", value = false})
-	self.Menu:MenuElement({id = "Misc", name = "Items/Summs", type = MENU})
+--misc
+	self.Menu:MenuElement({id = "Misc", name = "Activator", type = MENU})
 	self.Menu.Misc:MenuElement({id = "Pots", name = "Auto Use Potions/Refill/Cookies", value = true})
 	self.Menu.Misc:MenuElement({id = "HeaBar", name = "Auto Use Heal / Barrier", value = true})
+	self.Menu.Misc:MenuElement({id = "Cleanse", name = "Auto Use Cleans", value = true})
+	self.Menu.Misc:MenuElement({id = "QSS", name = "Auto Use QSS", value = true})
+--GaleForce / Flash Evade
+	self.Menu:MenuElement({id = "Evade", name = "Evade", type = MENU})
+	self.Menu.Evade:MenuElement({id = "EvadeGaFo", name = "Use Galeforce to Dodge", value = true})
+	self.Menu.Evade:MenuElement({id = "EvadeFla", name = "Use Flash to Dodge", value = true})
+	self.Menu.Evade:MenuElement({id = "EvadeCalc", name = "Sometimes Dodge Away from Mouse", value = true})
+	self.Menu.Evade:MenuElement({id = "EvadeSpells", name = "Enemy Spells to Dodge", type = MENU})
+-- RangedHelper
+	self.Menu:MenuElement({id = "RangedHelperWalk", name = "Enable KiteAssistance", value = true})
 
+end
+
+function Caitlyn:MenuEvade()
+	for i, enemy in pairs(EnemyHeroes) do
+		self.Menu.Evade.EvadeSpells:MenuElement({id = enemy.charName, name = enemy.charName, type = MENU})
+        self.Menu.Evade.EvadeSpells[enemy.charName]:MenuElement({id = enemy:GetSpellData(_Q).name, name = enemy:GetSpellData(_Q).name, value = false})
+        self.Menu.Evade.EvadeSpells[enemy.charName]:MenuElement({id = enemy:GetSpellData(_W).name, name = enemy:GetSpellData(_W).name, value = false})
+        self.Menu.Evade.EvadeSpells[enemy.charName]:MenuElement({id = enemy:GetSpellData(_E).name, name = enemy:GetSpellData(_E).name, value = false})
+        self.Menu.Evade.EvadeSpells[enemy.charName]:MenuElement({id = enemy:GetSpellData(_R).name, name = enemy:GetSpellData(_R).name, value = false})
+	end
 end
 
 function Caitlyn:Spells()
@@ -459,7 +484,13 @@ function Caitlyn:Tick()
     if _G.JustEvade and _G.JustEvade:Evading() or (_G.ExtLibEvade and _G.ExtLibEvade.Evading) or Game.IsChatOpen() or myHero.dead then return end
     target = GetTarget(1400)
 	--PrintChat(myHero.activeSpell.name)
-    AARange = _G.SDK.Data:GetAutoAttackRange(myHero)
+	if target and ValidTarget(target) then
+        --PrintChat(target.pos:To2D())
+        --PrintChat(mousePos:To2D())
+        GaleMouseSpot = self:RangedHelper(target)
+    else
+        _G.SDK.Orbwalker.ForceMovement = nil
+    end
 	CastingQ = myHero.activeSpell.name == "CaitlynPiltoverPeacemaker"
 	CastingW = myHero.activeSpell.name == "CaitlynYordleTrap"
 	CastingE = myHero.activeSpell.name == "CaitlynEntrapment"
@@ -477,6 +508,7 @@ function Caitlyn:Tick()
         if CountEnemy < 1 then
             GetEnemyHeroes()
         else
+			self:MenuEvade()
             EnemyLoaded = true
             PrintChat("Enemy Loaded")
         end
@@ -494,8 +526,8 @@ function Caitlyn:KS()
 	end
 		local RRange = 3500 + myHero.boundingRadius + enemy.boundingRadius
 		if enemy and not enemy.dead and ValidTarget(enemy, RRange) and self:CanUse(_R, "KS") then
-			local RDamage = getdmg("R", enemy, myHero, myHero:GetSpellData(_R).level)
-			if GetDistance(enemy.pos) < RRange and GetDistance(enemy.pos) > 1300 and enemy.health < RDamage and self:CastingChecks() and not _G.SDK.Attack:IsActive() then
+			local RDamage = getdmg("R", enemy, myHero, myHero:GetSpellData(_R).level) * 0.9
+			if GetDistance(enemy.pos) < RRange and GetDistance(enemy.pos) > 1000 and enemy.health < RDamage and self:CastingChecks() and not _G.SDK.Attack:IsActive() then
 				if EnemiesAround == 0 and not IsUnderEnemyTurret(myHero.pos) then
 					if enemy.pos:ToScreen().onScreen then
 						Control.CastSpell(HK_R, enemy)
@@ -511,7 +543,7 @@ function Caitlyn:KS()
 		end
 		local QRange = 1300 + myHero.boundingRadius + enemy.boundingRadius
 		if enemy and not enemy.dead and ValidTarget(enemy, QRange) and self:CanUse(_Q, "KS") then
-			local QDamage = getdmg("Q", enemy, myHero, myHero:GetSpellData(_Q).level) * 0.6
+			local QDamage = getdmg("Q", enemy, myHero, myHero:GetSpellData(_Q).level) * 0.9
 			local pred = _G.PremiumPrediction:GetPrediction(myHero, enemy, QSpellData)
 			if pred.CastPos and _G.PremiumPrediction.HitChance.High(pred.HitChance) and enemy.health < QDamage and GetDistance(pred.CastPos) > 650 + myHero.boundingRadius + enemy.boundingRadius  and GetDistance(pred.CastPos) < QRange and Caitlyn:CastingChecks() and not _G.SDK.Attack:IsActive() then
 				Control.CastSpell(HK_Q, pred.CastPos)
@@ -527,23 +559,61 @@ function Caitlyn:KS()
 			end
 		end
 		local EPeelRange = 250 + myHero.boundingRadius + enemy.boundingRadius
-		if enemy and not enemy.dead and ValidTarget(enemy,EPeelRange) and self:CanUse(_E, "NetGap") and self:CastingChecks() and not _G.SDK.Attack:IsActive() then
-			if GetDistance(enemy.pos) <= EPeelRange and IsFacing(enemy) and (enemy.ms * 1.0 > myHero.ms or enemy.pathing.isDashing) then
+		if enemy and not enemy.dead and ValidTarget(enemy, EPeelRange) and self:CanUse(_E, "NetGap") and self:CastingChecks() and not _G.SDK.Attack:IsActive() then
+			if GetDistance(enemy.pos) <= EPeelRange and IsFacing(enemy) and (enemy.ms * 0.8 > myHero.ms or enemy.pathing.isDashing) then
 				Control.CastSpell(HK_E, enemy)
 			end
 		end
 		if self.Menu.Misc.HeaBar:Value() and myHero.health / myHero.maxHealth <= 0.3 and enemy.activeSpell.target == myHero.handle then
 			if myHero:GetSpellData(SUMMONER_1).name == "SummonerHeal" then
-				Control.CastSpell(HK_SUMMONER_2)
-			elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerHeal" then
 				Control.CastSpell(HK_SUMMONER_1)
+			elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerHeal" then
+				Control.CastSpell(HK_SUMMONER_2)
 			end
 			if myHero:GetSpellData(SUMMONER_1).name == "SummonerBarrier" then
-				Control.CastSpell(HK_SUMMONER_2)
-			elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerBarrier" then
 				Control.CastSpell(HK_SUMMONER_1)
+			elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerBarrier" then
+				Control.CastSpell(HK_SUMMONER_2)
 			end
 		end
+		if self.Menu.Misc.Cleanse:Value() and IsImmobile(myHero) > 0.5 and enemy.activeSpell.target == myHero.handle then
+			if myHero:GetSpellData(SUMMONER_1).name == "SummonerBoost" and IsReady(SUMMONER_1) then
+				DelayAction(function() Control.CastSpell(HK_SUMMONER_1) end, 0.04)
+			elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerBoost" and IsReady(SUMMONER_2) then
+				DelayAction(function() Control.CastSpell(HK_SUMMONER_2) end, 0.04)
+			end
+		end
+		if (myHero:GetSpellData(SUMMONER_1).name == "SummonerBoost" and IsReady(SUMMONER_1)) or (myHero:GetSpellData(SUMMONER_2).name == "SummonerBoost" and IsReady(SUMMONER_2)) then
+		
+		else
+			if self.Menu.Misc.QSS:Value() and GetItemSlot(myHero, 3140) > 0 and myHero:GetSpellData(GetItemSlot(myHero, 3140)).currentCd == 0 and IsImmobile(myHero) > 0.5 and enemy.activeSpell.target == myHero.handle then
+				DelayAction(function() Control.CastSpell(ItemHotKey[GetItemSlot(myHero, 3140)]) end, 0.04)
+			elseif self.Menu.Misc.QSS:Value() and GetItemSlot(myHero, 3139) > 0 and myHero:GetSpellData(GetItemSlot(myHero, 3139)).currentCd == 0 and IsImmobile(myHero) > 0.5 and enemy.activeSpell.target == myHero.handle then
+				DelayAction(function() Control.CastSpell(ItemHotKey[GetItemSlot(myHero, 3139)]) end, 0.04)
+			elseif self.Menu.Misc.QSS:Value() and GetItemSlot(myHero, 6035) > 0 and myHero:GetSpellData(GetItemSlot(myHero, 6035)).currentCd == 0 and IsImmobile(myHero) > 0.5 and enemy.activeSpell.target == myHero.handle then
+				DelayAction(function() Control.CastSpell(ItemHotKey[GetItemSlot(myHero, 6035)]) end, 0.04)
+			end
+		end
+        local EEAARange = _G.SDK.Data:GetAutoAttackRange(enemy)
+		local AARange = _G.SDK.Data:GetAutoAttackRange(myHero)
+            if self:CastingChecks() and not (myHero.pathing and myHero.pathing.isDashing) then  
+                local BestGaleDodgeSpot = nil
+				--PrintChat("Got Dodge Spot")
+                if enemy and ValidTarget(enemy, GaleTargetRange) and (GetDistance(GaleMouseSpot, enemy.pos) < AARange or GetDistance(enemy.pos, myHero.pos) < AARange+150) then
+                        BestGaleDodgeSpot = self:GaleDodge(enemy, GaleMouseSpot)	
+                else
+                        BestGaleDodgeSpot = self:GaleDodge(enemy)
+                end
+                if  BestGaleDodgeSpot ~= nil then
+					if GetItemSlot(myHero, 6671) > 0 and self.Menu.Evade.EvadeGaFo:Value() and myHero:GetSpellData(GetItemSlot(myHero, 6671)).currentCd == 0 then
+							Control.CastSpell(ItemHotKey[GetItemSlot(myHero, 6671)], BestGaleDodgeSpot)
+                    elseif myHero:GetSpellData(SUMMONER_1).name == "SummonerFlash" and IsReady(SUMMONER_1) and self.Menu.Evade.EvadeFla:Value() and myHero.health/myHero.maxHealth <= 0.4  then
+						Control.CastSpell(HK_SUMMONER_1, BestGaleDodgeSpot)
+					elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerFlash" and IsReady(SUMMONER_2) and self.Menu.Evade.EvadeFla:Value() and myHero.health/myHero.maxHealth <= 0.4 then
+						Control.CastSpell(HK_SUMMONER_2, BestGaleDodgeSpot)
+					end	
+				end
+			end
 	end
 	EnemiesAround = count
 end
@@ -675,7 +745,10 @@ function Caitlyn:LastHit()
 			if GetDistance(minion.pos) > 650 and GetDistance(minion.pos) < 1300 and (minion.charName == "SRU_ChaosMinionSiege" or minion.charName == "SRU_OrderMinionSiege") then
 				local QDam = getdmg("Q", minion, myHero, myHero:GetSpellData(_Q).level)
 				if minion and not minion.dead and QDam >= minion.health and self:CastingChecks() and not _G.SDK.Attack:IsActive()then
-					Control.CastSpell(HK_Q, minion)
+					local pred = _G.PremiumPrediction:GetPrediction(myHero, minion, QSpellData)
+					if pred.CastPos and _G.PremiumPrediction.HitChance.Low then
+						Control.CastSpell(HK_Q, pred.CastPos)
+					end
 				end
 			end
 		end
@@ -700,6 +773,173 @@ function Caitlyn:Healing()
 	end
 	
 end
+
+function Caitlyn:GaleDodge(enemy, HelperSpot) 
+if enemy.activeSpell and enemy.activeSpell.valid then
+        if enemy.activeSpell.target == myHero.handle then 
+
+        elseif enemy.activeSpell.isStopped then
+		
+		else
+            local SpellName = enemy.activeSpell.name
+            if (self.Menu.Evade.EvadeSpells[enemy.charName] and self.Menu.Evade.EvadeSpells[enemy.charName][SpellName] and self.Menu.Evade.EvadeSpells[enemy.charName][SpellName]:Value()) or myHero.health/myHero.maxHealth <= 0.15 then
+
+
+
+
+                local CastPos = enemy.activeSpell.startPos
+                local PlacementPos = enemy.activeSpell.placementPos
+                local width = 100
+				local CastTime = enemy.activeSpell.startTime
+				local TimeDif = Game.Timer() - CastTime
+                if enemy.activeSpell.width > 0 then
+                    width = enemy.activeSpell.width
+                end
+                local SpellType = "Linear"
+                if SpellType == "Linear" and PlacementPos and CastPos and TimeDif >= 0.08 then
+
+                    --PrintChat(CastPos)
+                    local VCastPos = Vector(CastPos.x, CastPos.y, CastPos.z)
+                    local VPlacementPos = Vector(PlacementPos.x, PlacementPos.y, PlacementPos.z)
+
+                    local CastDirection = Vector((VCastPos-VPlacementPos):Normalized())
+                    local PlacementPos2 = VCastPos - CastDirection * enemy.activeSpell.range
+
+                    local TargetPos = Vector(enemy.pos)
+                    local MouseDirection = Vector((myHero.pos-mousePos):Normalized())
+                    local ScanDistance = width*2 + myHero.boundingRadius
+                    local ScanSpot = myHero.pos - MouseDirection * ScanDistance
+                    local ClosestSpot = Vector(self:ClosestPointOnLineSegment(myHero.pos, PlacementPos2, CastPos))
+                    if HelperSpot then 
+                        local ClosestSpotHelper = Vector(self:ClosestPointOnLineSegment(HelperSpot, PlacementPos2, CastPos))
+                        if ClosestSpot and ClosestSpotHelper then
+                            local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
+                            local HelperDistance = GetDistance(HelperSpot, ClosestSpotHelper)
+                            if PlacementDistance < width*2 + myHero.boundingRadius then
+                                if HelperDistance > width*2 + myHero.boundingRadius then
+                                    return HelperSpot
+                                elseif self.Menu.Evade.EvadeCalc:Value() then
+                                    local DodgeRange = width*2 + myHero.boundingRadius
+                                    if DodgeRange < DodgeableRange then
+                                        local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
+                                        if DodgeSpot ~= nil then
+                                           --PrintChat("Dodging to Calced Spot")
+                                            return DodgeSpot
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    else
+                        if ClosestSpot then
+                            local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
+                            if PlacementDistance < width*2 + myHero.boundingRadius then
+                                if self.Menu.Evade.EvadeCalc:Value() then
+                                    local DodgeRange = width*2 + myHero.boundingRadius
+                                    if DodgeRange < DodgeableRange then
+                                        local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
+                                        if DodgeSpot ~= nil then
+                                           --PrintChat("Dodging to Calced Spot")
+                                            return DodgeSpot
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end    
+    return nil
+end
+
+function Caitlyn:ClosestPointOnLineSegment(p, p1, p2)
+    local px = p.x
+    local pz = p.z
+    local ax = p1.x
+    local az = p1.z
+    local bx = p2.x
+    local bz = p2.z
+    local bxax = bx - ax
+    local bzaz = bz - az
+    local t = ((px - ax) * bxax + (pz - az) * bzaz) / (bxax * bxax + bzaz * bzaz)
+    if (t < 0) then
+        return p1, false
+    end
+    if (t > 1) then
+        return p2, false
+    end
+    return {x = ax + t * bxax, z = az + t * bzaz}, true
+end
+
+function Caitlyn:GetDodgeSpot(CastSpot, ClosestSpot, width)
+    local DodgeSpot = nil
+    local RadAngle1 = 90 * math.pi / 180
+    local CheckPos1 = ClosestSpot + (CastSpot - ClosestSpot):Rotated(0, RadAngle1, 0):Normalized() * width
+    local RadAngle2 = 270 * math.pi / 180
+    local CheckPos2 = ClosestSpot + (CastSpot - ClosestSpot):Rotated(0, RadAngle2, 0):Normalized() * width
+
+    if GetDistance(CheckPos1, mousePos) < GetDistance(CheckPos2, mousePos) then
+        if GetDistance(CheckPos1, myHero.pos) < DodgeableRange then
+            DodgeSpot = CheckPos1
+        elseif GetDistance(CheckPos2, myHero.pos) < DodgeableRange then
+            DodgeSpot = CheckPos2
+        end
+    else
+        if GetDistance(CheckPos2, myHero.pos) < DodgeableRange then
+            DodgeSpot = CheckPos2
+        elseif GetDistance(CheckPos1, myHero.pos) < DodgeableRange then
+            DodgeSpot = CheckPos1
+        end
+    end
+    return DodgeSpot
+end
+
+function Caitlyn:RangedHelper(unit)
+    local EAARangel = _G.SDK.Data:GetAutoAttackRange(unit)
+    local MoveSpot = nil
+    local RangeDif = AARange - EAARangel
+    local ExtraRangeDist = RangeDif + -50
+    local ExtraRangeChaseDist = RangeDif + -150
+
+    local ScanDirection = Vector((myHero.pos-mousePos):Normalized())
+    local ScanDistance = GetDistance(myHero.pos, unit.pos) * 0.8
+    local ScanSpot = myHero.pos - ScanDirection * ScanDistance
+	
+
+    local MouseDirection = Vector((unit.pos-ScanSpot):Normalized())
+    local MouseSpotDistance = EAARangel + ExtraRangeDist
+    if not IsFacing(unit) then
+        MouseSpotDistance = EAARangel + ExtraRangeChaseDist
+    end
+    if MouseSpotDistance > AARange then
+        MouseSpotDistance = AARange
+    end
+
+    local MouseSpot = unit.pos - MouseDirection * (MouseSpotDistance)
+	local MouseDistance = GetDistance(unit.pos, mousePos)
+    local GaleMouseSpotDirection = Vector((myHero.pos-MouseSpot):Normalized())
+    local GalemouseSpotDistance = GetDistance(myHero.pos, MouseSpot)
+    if GalemouseSpotDistance > 300 then
+        GalemouseSpotDistance = 300
+    end
+    local GaleMouseSpoty = myHero.pos - GaleMouseSpotDirection * GalemouseSpotDistance
+    MoveSpot = MouseSpot
+
+    if MoveSpot then
+        if GetDistance(myHero.pos, MoveSpot) < 50 or IsUnderEnemyTurret(MoveSpot) then
+            _G.SDK.Orbwalker.ForceMovement = nil
+        elseif self.Menu.RangedHelperWalk:Value() and GetDistance(myHero.pos, unit.pos) <= AARange-50 and (Mode() == "Combo" or Mode() == "Harass") and self:CastingChecks() and MouseDistance < 750 then
+            _G.SDK.Orbwalker.ForceMovement = MoveSpot
+        else
+            _G.SDK.Orbwalker.ForceMovement = nil
+        end
+    end
+    return GaleMouseSpoty
+end
+
+
 function Caitlyn:OnPostAttack(args)
 end
 
