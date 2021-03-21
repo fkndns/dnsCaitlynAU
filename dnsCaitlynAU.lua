@@ -10,7 +10,7 @@ local AllySpawnPos = nil
 
 do
     
-    local Version = 1.1
+    local Version = 1.2
     
     local Files = {
         Lua = {
@@ -438,6 +438,7 @@ function Caitlyn:Menu()
 	self.Menu.Evade:MenuElement({id = "EvadeFla", name = "Use Flash to Dodge", value = true})
 	self.Menu.Evade:MenuElement({id = "EvadeCalc", name = "Sometimes Dodge Away from Mouse", value = true})
 	self.Menu.Evade:MenuElement({id = "EvadeSpells", name = "Enemy Spells to Dodge", type = MENU})
+	self.Menu.Evade:MenuElement({id = "EvadeAssist", name = "Use Dodge Assist", value = true})
 -- RangedHelper
 	self.Menu:MenuElement({id = "RangedHelperWalk", name = "Enable KiteAssistance", value = true})
 
@@ -560,7 +561,7 @@ function Caitlyn:KS()
 		end
 		local EPeelRange = 250 + myHero.boundingRadius + enemy.boundingRadius
 		if enemy and not enemy.dead and ValidTarget(enemy, EPeelRange) and self:CanUse(_E, "NetGap") and self:CastingChecks() and not _G.SDK.Attack:IsActive() then
-			if GetDistance(enemy.pos) <= EPeelRange and IsFacing(enemy) and (enemy.ms * 0.8 > myHero.ms or enemy.pathing.isDashing) then
+			if GetDistance(enemy.pos) <= EPeelRange and IsFacing(enemy) then
 				Control.CastSpell(HK_E, enemy)
 			end
 		end
@@ -605,12 +606,30 @@ function Caitlyn:KS()
                         BestGaleDodgeSpot = self:GaleDodge(enemy)
                 end
                 if  BestGaleDodgeSpot ~= nil then
+					PrintChat("OKK")
 					if GetItemSlot(myHero, 6671) > 0 and self.Menu.Evade.EvadeGaFo:Value() and myHero:GetSpellData(GetItemSlot(myHero, 6671)).currentCd == 0 then
 							Control.CastSpell(ItemHotKey[GetItemSlot(myHero, 6671)], BestGaleDodgeSpot)
-                    elseif myHero:GetSpellData(SUMMONER_1).name == "SummonerFlash" and IsReady(SUMMONER_1) and self.Menu.Evade.EvadeFla:Value() and myHero.health/myHero.maxHealth <= 0.4  then
+							PrintChat("Galeforcing")
+                    elseif myHero:GetSpellData(SUMMONER_1).name == "SummonerFlash" and IsReady(SUMMONER_1) and self.Menu.Evade.EvadeFla:Value() and myHero.health/myHero.maxHealth <= 0.4 then 
 						Control.CastSpell(HK_SUMMONER_1, BestGaleDodgeSpot)
 					elseif myHero:GetSpellData(SUMMONER_2).name == "SummonerFlash" and IsReady(SUMMONER_2) and self.Menu.Evade.EvadeFla:Value() and myHero.health/myHero.maxHealth <= 0.4 then
 						Control.CastSpell(HK_SUMMONER_2, BestGaleDodgeSpot)
+					else 
+					end	
+				end
+			end
+			if self:CastingChecks() and not (myHero.pathing and myHero.pathing.isDashing) then  
+                local BestDodgeSpot = nil
+				--PrintChat("Got Dodge Spot")
+                if enemy and ValidTarget(enemy, 1400) and (GetDistance(GaleMouseSpot, enemy.pos) < AARange or GetDistance(enemy.pos, myHero.pos) < AARange+150) then
+                        BestDodgeSpot = self:DodgeHelper(enemy, GaleMouseSpot)	
+                else
+                        BestDodgeSpot = self:DodgeHelper(enemy)
+                end
+                if  BestDodgeSpot ~= nil then
+					if self.Menu.Evade.EvadeAssist:Value() then 
+						_G.SDK.Orbwalker.ForceMovement = BestDodgeSpot
+						--PrintChat("Moving")
 					end	
 				end
 			end
@@ -782,66 +801,147 @@ if enemy.activeSpell and enemy.activeSpell.valid then
 		
 		else
             local SpellName = enemy.activeSpell.name
-            if (self.Menu.Evade.EvadeSpells[enemy.charName] and self.Menu.Evade.EvadeSpells[enemy.charName][SpellName] and self.Menu.Evade.EvadeSpells[enemy.charName][SpellName]:Value()) or myHero.health/myHero.maxHealth <= 0.15 then
+			if self.Menu.Evade.EvadeSpells[enemy.charName] and self.Menu.Evade.EvadeSpells[enemy.charName][SpellName] and self.Menu.Evade.EvadeSpells[enemy.charName][SpellName]:Value() then
+            
 
 
 
 
-                local CastPos = enemy.activeSpell.startPos
-                local PlacementPos = enemy.activeSpell.placementPos
-                local width = 100
-				local CastTime = enemy.activeSpell.startTime
-				local TimeDif = Game.Timer() - CastTime
-                if enemy.activeSpell.width > 0 then
-                    width = enemy.activeSpell.width
-                end
-                local SpellType = "Linear"
-                if SpellType == "Linear" and PlacementPos and CastPos and TimeDif >= 0.08 then
+            local CastPos = enemy.activeSpell.startPos
+            local PlacementPos = enemy.activeSpell.placementPos
+            local width = 100
+			local CastTime = enemy.activeSpell.startTime
+			local TimeDif = Game.Timer() - CastTime
+            if enemy.activeSpell.width > 0 then
+                width = enemy.activeSpell.width
+            end
+            local SpellType = "Linear"
+            if SpellType == "Linear" and PlacementPos and CastPos then
 
-                    --PrintChat(CastPos)
-                    local VCastPos = Vector(CastPos.x, CastPos.y, CastPos.z)
-                    local VPlacementPos = Vector(PlacementPos.x, PlacementPos.y, PlacementPos.z)
+                --PrintChat(CastPos)
+                local VCastPos = Vector(CastPos.x, CastPos.y, CastPos.z)
+                local VPlacementPos = Vector(PlacementPos.x, PlacementPos.y, PlacementPos.z)
 
-                    local CastDirection = Vector((VCastPos-VPlacementPos):Normalized())
-                    local PlacementPos2 = VCastPos - CastDirection * enemy.activeSpell.range
+                local CastDirection = Vector((VCastPos-VPlacementPos):Normalized())
+                local PlacementPos2 = VCastPos - CastDirection * enemy.activeSpell.range
 
-                    local TargetPos = Vector(enemy.pos)
-                    local MouseDirection = Vector((myHero.pos-mousePos):Normalized())
-                    local ScanDistance = width*2 + myHero.boundingRadius
-                    local ScanSpot = myHero.pos - MouseDirection * ScanDistance
-                    local ClosestSpot = Vector(self:ClosestPointOnLineSegment(myHero.pos, PlacementPos2, CastPos))
-                    if HelperSpot then 
-                        local ClosestSpotHelper = Vector(self:ClosestPointOnLineSegment(HelperSpot, PlacementPos2, CastPos))
-                        if ClosestSpot and ClosestSpotHelper then
-                            local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
-                            local HelperDistance = GetDistance(HelperSpot, ClosestSpotHelper)
-                            if PlacementDistance < width*2 + myHero.boundingRadius then
-                                if HelperDistance > width*2 + myHero.boundingRadius then
-                                    return HelperSpot
-                                elseif self.Menu.Evade.EvadeCalc:Value() then
-                                    local DodgeRange = width*2 + myHero.boundingRadius
-                                    if DodgeRange < DodgeableRange then
-                                        local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
-                                        if DodgeSpot ~= nil then
-                                           --PrintChat("Dodging to Calced Spot")
-                                            return DodgeSpot
-                                        end
+				local TargetPos = Vector(enemy.pos)
+                local MouseDirection = Vector((myHero.pos-mousePos):Normalized())
+                local ScanDistance = width*2 + myHero.boundingRadius
+                local ScanSpot = myHero.pos - MouseDirection * ScanDistance
+                local ClosestSpot = Vector(self:ClosestPointOnLineSegment(myHero.pos, PlacementPos2, CastPos))
+                if HelperSpot then 
+                    local ClosestSpotHelper = Vector(self:ClosestPointOnLineSegment(HelperSpot, PlacementPos2, CastPos))
+                    if ClosestSpot and ClosestSpotHelper then
+                        local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
+                        local HelperDistance = GetDistance(HelperSpot, ClosestSpotHelper)
+                        if PlacementDistance < width*2 + myHero.boundingRadius then
+                            if HelperDistance > width*2 + myHero.boundingRadius then
+                                return HelperSpot
+                            elseif self.Menu.Evade.EvadeCalc:Value() then
+                                local DodgeRange = width*2 + myHero.boundingRadius
+                                if DodgeRange < DodgeableRange then
+                                    local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
+                                    if DodgeSpot ~= nil then
+                                        --PrintChat("Dodging to Calced Spot")
+                                        return DodgeSpot
                                     end
                                 end
                             end
                         end
-                    else
-                        if ClosestSpot then
-                            local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
-                            if PlacementDistance < width*2 + myHero.boundingRadius then
-                                if self.Menu.Evade.EvadeCalc:Value() then
-                                    local DodgeRange = width*2 + myHero.boundingRadius
-                                    if DodgeRange < DodgeableRange then
-                                        local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
-                                        if DodgeSpot ~= nil then
-                                           --PrintChat("Dodging to Calced Spot")
-                                            return DodgeSpot
-                                        end
+                    end
+                else
+                    if ClosestSpot then
+                        local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
+                        if PlacementDistance < width*2 + myHero.boundingRadius then
+                            if self.Menu.Evade.EvadeCalc:Value() then
+                                local DodgeRange = width*2 + myHero.boundingRadius
+                                if DodgeRange < DodgeableRange then
+                                    local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
+                                    if DodgeSpot ~= nil then
+                                        --PrintChat("Dodging to Calced Spot")
+                                        return DodgeSpot
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+			end
+        end
+    end    
+    return nil
+end
+
+function Caitlyn:DodgeHelper(enemy, HelperSpot) 
+if enemy.activeSpell and enemy.activeSpell.valid then
+        if enemy.activeSpell.target == myHero.handle then 
+
+        elseif enemy.activeSpell.isStopped then
+		
+		else
+			
+            local SpellName = enemy.activeSpell.name
+            
+
+
+
+
+            local CastPos = enemy.activeSpell.startPos
+            local PlacementPos = enemy.activeSpell.placementPos
+            local width = 100
+			local CastTime = enemy.activeSpell.startTime
+			local TimeDif = Game.Timer() - CastTime
+            if enemy.activeSpell.width > 0 then
+                width = enemy.activeSpell.width
+            end
+            local SpellType = "Linear"
+            if SpellType == "Linear" and PlacementPos and CastPos then
+
+                --PrintChat(CastPos)
+                local VCastPos = Vector(CastPos.x, CastPos.y, CastPos.z)
+                local VPlacementPos = Vector(PlacementPos.x, PlacementPos.y, PlacementPos.z)
+
+                local CastDirection = Vector((VCastPos-VPlacementPos):Normalized())
+                local PlacementPos2 = VCastPos - CastDirection * enemy.activeSpell.range
+
+				local TargetPos = Vector(enemy.pos)
+                local MouseDirection = Vector((myHero.pos-mousePos):Normalized())
+                local ScanDistance = width*2 + myHero.boundingRadius
+                local ScanSpot = myHero.pos - MouseDirection * ScanDistance
+                local ClosestSpot = Vector(self:ClosestPointOnLineSegment(myHero.pos, PlacementPos2, CastPos))
+                if HelperSpot then 
+                    local ClosestSpotHelper = Vector(self:ClosestPointOnLineSegment(HelperSpot, PlacementPos2, CastPos))
+                    if ClosestSpot and ClosestSpotHelper then
+                        local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
+                        local HelperDistance = GetDistance(HelperSpot, ClosestSpotHelper)
+                        if PlacementDistance < width*2 + myHero.boundingRadius then
+                            if HelperDistance > width*2 + myHero.boundingRadius then
+                                return HelperSpot
+                            elseif self.Menu.Evade.EvadeCalc:Value() then
+                                local DodgeRange = width*3 + myHero.boundingRadius
+                                if DodgeRange < DodgeableRange then
+                                    local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
+                                    if DodgeSpot ~= nil then
+                                        --PrintChat("Dodging to Calced Spot")
+                                        return DodgeSpot
+                                    end
+                                end
+                            end
+                        end
+                    end
+                else
+                    if ClosestSpot then
+                        local PlacementDistance = GetDistance(myHero.pos, ClosestSpot)
+                        if PlacementDistance < width*2 + myHero.boundingRadius then
+                            if self.Menu.Evade.EvadeCalc:Value() then
+                                local DodgeRange = width*2 + myHero.boundingRadius
+                                if DodgeRange < DodgeableRange then
+                                    local DodgeSpot = self:GetDodgeSpot(CastPos, ClosestSpot, DodgeRange)
+                                    if DodgeSpot ~= nil then
+                                        --PrintChat("Dodging to Calced Spot")
+                                        return DodgeSpot
                                     end
                                 end
                             end
