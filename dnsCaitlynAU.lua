@@ -10,7 +10,7 @@ local AllySpawnPos = nil
 
 do
     
-    local Version = 1.2
+    local Version = 1.3
     
     local Files = {
         Lua = {
@@ -435,12 +435,12 @@ function Caitlyn:Menu()
 --GaleForce / Flash Evade
 	self.Menu:MenuElement({id = "Evade", name = "Evade", type = MENU})
 	self.Menu.Evade:MenuElement({id = "EvadeGaFo", name = "Use Galeforce to Dodge", value = true})
-	self.Menu.Evade:MenuElement({id = "EvadeFla", name = "Use Flash to Dodge", value = true})
+	self.Menu.Evade:MenuElement({id = "EvadeFla", name = "Use Flash to Dodge", value = false})
 	self.Menu.Evade:MenuElement({id = "EvadeCalc", name = "Sometimes Dodge Away from Mouse", value = true})
 	self.Menu.Evade:MenuElement({id = "EvadeSpells", name = "Enemy Spells to Dodge", type = MENU})
 	self.Menu.Evade:MenuElement({id = "EvadeAssist", name = "Use Dodge Assist", value = true})
 -- RangedHelper
-	self.Menu:MenuElement({id = "RangedHelperWalk", name = "Enable KiteAssistance", value = true})
+	self.Menu:MenuElement({id = "RangedHelperWalk", name = "Enable KiteAssistance", value = false})
 
 end
 
